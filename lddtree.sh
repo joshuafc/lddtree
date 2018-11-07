@@ -315,8 +315,6 @@ AUTO_ROOT=true
 IGNORE_BY_WORDS=false
 
 				
-#libnvinfer_plugin libstdc++.so libnvidia-fatbinaryloader.so libnvinfer.so libavformat.so libopencv_ libboost_ libdl libpthread libz.so libgcc_s.so libglog.so libgflags.so libprotobuf.so libEGL.so libcuda.so libnvparsers.so libGLEW.so libavcodec.so libavutil.so libnvcuvid.so x86_64-linux-gnu
-
 while getopts haxVR:i:l-:  OPT ; do
 	case ${OPT} in
 	a) SHOW_ALL=true;;
