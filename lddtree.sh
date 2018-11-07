@@ -1,7 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 # Copyright 2007-2013 Gentoo Foundation
 # Copyright 2007-2013 Mike Frysinger <vapier@gentoo.org>
 # Copyright 2014-2015 Natanael Copa <ncopa@alpinelinux.org>
+# Copyright 2018-2018 Bin Zhou <bin.zhou.cv@gmail.com>
 # Distributed under the terms of the GNU General Public License v2
 
 argv0=${0##*/}
@@ -22,6 +23,8 @@ usage() {
 	  -a              Show all duplicated dependencies
 	  -x              Run with debugging
 	  -R <root>       Use this ROOT filesystem tree
+	  -i <key_words>  Stop recursively find dependency once the library full path match one of keywords which split with blank
+
 	  --no-auto-root  Do not automatically prefix input ELFs with ROOT
 	  -l              Display output in a flat format
 	  -h              Show this help output
@@ -215,14 +218,14 @@ resolv_links() {
 }
 
 show_elf() {
-	local elf=$1 indent=$2 parent_elfs=$3
+	local elf=$1 indent=$2 parent_elfs=$3 current_stop_recursion=$4
 	local rlib lib libs
 	local interp resolved
 	find_elf "${elf}"
 	resolved=${_find_elf}
 	elf=${elf##*/}
 
-	${LIST} || printf "%${indent}s%s => " "" "${elf}"
+	${LIST} || printf "%${indent}s%s => " "" "${elf}" 
 	case ",${parent_elfs}," in
 	*,${elf},*)
 		${LIST} || printf "!!! circular loop !!!\n" ""
@@ -259,6 +262,9 @@ show_elf() {
 		fi
 		interp=${interp##*/}
 	fi
+	if $current_stop_recursion ; then
+		printf " ..."
+	fi
 	${LIST} || printf "\n"
 
 	[ -z "${resolved}" ] && return
@@ -276,27 +282,47 @@ show_elf() {
 	set -- ${libs}
 	IFS="$oifs"
 
-	for lib; do
-		lib=${lib##*/}
-		case ",${my_allhits}," in
-			*,${lib},*) continue;;
-		esac
-		find_elf "${lib}" "${resolved}"
-		rlib=${_find_elf}
-		show_elf "${rlib:-${lib}}" $((indent + 4)) "${parent_elfs}"
-	done
+	if ! $current_stop_recursion ; then
+		for lib; do
+			lib=${lib##*/}
+			case ",${my_allhits}," in
+				*,${lib},*) continue;;
+			esac
+			find_elf "${lib}" "${resolved}"
+			rlib=${_find_elf}
+			local stop_recursion
+			stop_recursion=false
+			if $IGNORE_BY_WORDS ; then
+				for search_str in "${ignored_libs[@]}" 
+				do
+					case ${rlib} in *${search_str}*) 
+						stop_recursion=true; 
+						break;;
+					esac
+				done
+			fi
+			show_elf "${rlib:-${lib}}" $((indent + 4)) "${parent_elfs}" $stop_recursion
+		done
+	#else
+		#printf "%$((indent + 4))s... ignored dependency of $elf\n"
+	fi
 }
 
 SHOW_ALL=false
 SET_X=false
 LIST=false
 AUTO_ROOT=true
+IGNORE_BY_WORDS=false
 
-while getopts haxVR:l-:  OPT ; do
+				
+#libnvinfer_plugin libstdc++.so libnvidia-fatbinaryloader.so libnvinfer.so libavformat.so libopencv_ libboost_ libdl libpthread libz.so libgcc_s.so libglog.so libgflags.so libprotobuf.so libEGL.so libcuda.so libnvparsers.so libGLEW.so libavcodec.so libavutil.so libnvcuvid.so x86_64-linux-gnu
+
+while getopts haxVR:i:l-:  OPT ; do
 	case ${OPT} in
 	a) SHOW_ALL=true;;
 	x) SET_X=true;;
 	h) usage;;
+	i) IGNORE_BY_WORDS=true;declare -a ignored_libs=(${OPTARG%/});;
 	V) version;;
 	R) ROOT="${OPTARG%/}/";;
 	l) LIST=true;;
@@ -343,8 +369,7 @@ for elf ; do
 	else
 		allhits=""
 		[ "${elf##*/*}" = "${elf}" ] && elf="./${elf}"
-		show_elf "${elf}" 0 ""
+		show_elf "${elf}" 0 "" false
 	fi
 done
 exit ${ret}
-
